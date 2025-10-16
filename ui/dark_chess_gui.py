@@ -176,7 +176,7 @@ AI类型：
             # 红方人类，黑方RL AI
             from rl_ai.rl_player import RLPlayer
             import os
-            model_path = "models/model_final.pth"
+            model_path = "models_v3/model_final.pth"
             if not os.path.exists(model_path):
                 messagebox.showwarning("警告", "未找到训练好的模型！将使用随机初始化模型")
                 model_path = None
@@ -186,7 +186,7 @@ AI类型：
             # 黑方人类，红方RL AI
             from rl_ai.rl_player import RLPlayer
             import os
-            model_path = "models/model_final.pth"
+            model_path = "models_v3/model_final.pth"
             if not os.path.exists(model_path):
                 messagebox.showwarning("警告", "未找到训练好的模型！将使用随机初始化模型")
                 model_path = None
@@ -197,7 +197,7 @@ AI类型：
             from ai.mcts_ai import MCTSAI
             from rl_ai.rl_player import RLPlayer
             import os
-            model_path = "models/model_final.pth"
+            model_path = "models_v3/model_final.pth"
             if not os.path.exists(model_path):
                 messagebox.showwarning("警告", "未找到训练好的模型！将使用随机初始化模型")
                 model_path = None
