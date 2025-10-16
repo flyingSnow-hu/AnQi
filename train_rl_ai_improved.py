@@ -164,6 +164,10 @@ class ImprovedSelfPlayTrainer:
             repetition_penalty = engine.game_state.get_repetition_penalty()
             step_reward += repetition_penalty
             
+            # 添加长将惩罚
+            perpetual_check_penalty = engine.game_state.get_perpetual_check_penalty()
+            step_reward += perpetual_check_penalty
+            
             # 累积奖励
             if current_color == "red":
                 red_cumulative_reward += step_reward
@@ -187,6 +191,14 @@ class ImprovedSelfPlayTrainer:
         if engine.game_state.game_over:
             if engine.game_state.is_draw_by_repetition:
                 winner = None  # 三次重复平局
+            elif engine.game_state.is_loss_by_perpetual_check:
+                # 长将判负
+                if engine.game_state.winner == "红方":
+                    winner = "red"
+                elif engine.game_state.winner == "黑方":
+                    winner = "black"
+                else:
+                    winner = None
             elif engine.game_state.winner == "红方":
                 winner = "red"
             elif engine.game_state.winner == "黑方":

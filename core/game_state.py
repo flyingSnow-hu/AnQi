@@ -17,6 +17,12 @@ class GameState:
         self.is_draw_by_repetition = False  # 是否因重复判和
         self.repetition_penalty = 0.0  # 重复局面惩罚值
         
+        # 长将检测
+        self.consecutive_checks = 0  # 连续将军次数
+        self.checking_side = None    # 将军方('red'或'black')
+        self.is_loss_by_perpetual_check = False  # 是否因长将判负
+        self.perpetual_check_threshold = 6  # 长将判负阈值(连续6次)
+        
     def switch_turn(self):
         """切换回合"""
         self.current_turn = "black" if self.current_turn == "red" else "red"
@@ -77,3 +83,52 @@ class GameState:
         self.repeat_count = {}
         self.is_draw_by_repetition = False
         self.repetition_penalty = 0.0
+    
+    def update_check_status(self, is_checking, checking_side):
+        """
+        更新将军状态
+        
+        Args:
+            is_checking: 当前是否有将军
+            checking_side: 如果有将军,是哪一方在将军
+        """
+        if is_checking:
+            if self.checking_side == checking_side:
+                # 同一方连续将军
+                self.consecutive_checks += 1
+            else:
+                # 新的将军方,重置计数
+                self.checking_side = checking_side
+                self.consecutive_checks = 1
+            
+            # 检查是否达到长将阈值
+            if self.consecutive_checks >= self.perpetual_check_threshold:
+                self.is_loss_by_perpetual_check = True
+                self.game_over = True
+                # 长将方判负,对方获胜
+                opponent = "black" if checking_side == "red" else "red"
+                self.winner = "黑方" if opponent == "black" else "红方"
+                return True
+        else:
+            # 没有将军,重置计数
+            self.consecutive_checks = 0
+            self.checking_side = None
+        
+        return False
+    
+    def get_perpetual_check_penalty(self):
+        """
+        获取长将惩罚
+        用于训练时惩罚长将行为
+        
+        Returns:
+            惩罚值(负数),连续将军次数越多惩罚越大
+        """
+        if self.consecutive_checks == 0:
+            return 0.0
+        elif self.consecutive_checks < 3:
+            return -0.005  # 轻微惩罚
+        elif self.consecutive_checks < 5:
+            return -0.02   # 中等惩罚
+        else:
+            return -0.1    # 严重惩罚(接近长将判负)
