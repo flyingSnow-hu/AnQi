@@ -88,9 +88,14 @@ class GameEngine(Observable):
             self.game_state.switch_turn()
             
             # 检测长将
-            is_perpetual = self.check_perpetual_check()
+            is_perpetual_check = self.check_perpetual_check()
             
-            if not is_perpetual:
+            # 检测长捉(只在没有长将时检测)
+            is_perpetual_chase = False
+            if not is_perpetual_check:
+                is_perpetual_chase = self.check_perpetual_chase()
+            
+            if not is_perpetual_check and not is_perpetual_chase:
                 # 计算新局面哈希
                 current_hash = self.zobrist.compute_hash(self.board, self.game_state.current_turn)
                 is_draw = self.game_state.add_position_hash(current_hash)
@@ -222,6 +227,134 @@ class GameEngine(Observable):
                             return True
         
         return False  # 所有走法都无法解除将军
+    
+    def is_piece_under_threat(self, piece_pos: Tuple[int, int], by_color: str) -> bool:
+        """
+        检查某个位置的棋子是否被某方威胁(可以被吃)
+        
+        Args:
+            piece_pos: 被检查棋子的位置
+            by_color: 威胁方的颜色
+        
+        Returns:
+            True表示被威胁，False表示未被威胁
+        """
+        target_piece = self.board.get_piece(*piece_pos)
+        if not target_piece:
+            return False
+        
+        # 遍历by_color的所有棋子
+        for row in range(10):
+            for col in range(9):
+                piece = self.board.get_piece(row, col)
+                if piece and piece.color == by_color and piece.is_revealed():
+                    # 检查该棋子是否能移动到目标位置
+                    if self.board.is_valid_move((row, col), piece_pos, by_color):
+                        return True
+        
+        return False
+    
+    def can_piece_escape(self, piece_pos: Tuple[int, int], from_color: str) -> bool:
+        """
+        检查某个位置的棋子是否能逃脱威胁
+        
+        Args:
+            piece_pos: 被追捉棋子的位置
+            from_color: 威胁方的颜色
+        
+        Returns:
+            True表示能逃脱(有安全走法)，False表示只能被动逃跑
+        """
+        piece = self.board.get_piece(*piece_pos)
+        if not piece:
+            return True  # 棋子不存在,算能逃脱
+        
+        # 获取该棋子的所有合法移动
+        valid_moves = piece.get_valid_moves(self.board, piece_pos)
+        
+        for to_pos in valid_moves:
+            # 模拟走这步棋
+            original_piece = self.board.get_piece(*to_pos)
+            self.board.set_piece(to_pos[0], to_pos[1], piece)
+            self.board.set_piece(piece_pos[0], piece_pos[1], None)
+            
+            # 检查走完后是否还被威胁
+            still_under_threat = self.is_piece_under_threat(to_pos, from_color)
+            
+            # 撤销移动
+            self.board.set_piece(piece_pos[0], piece_pos[1], piece)
+            self.board.set_piece(to_pos[0], to_pos[1], original_piece)
+            
+            # 如果走完后不再被威胁,说明能逃脱
+            if not still_under_threat:
+                return True
+        
+        return False  # 所有走法都无法逃脱威胁
+    
+    def find_chased_piece(self, attacking_color: str) -> Optional[Tuple[int, int]]:
+        """
+        查找被追捉的棋子
+        
+        Args:
+            attacking_color: 攻击方的颜色
+        
+        Returns:
+            被追捉棋子的位置，如果没有则返回None
+        """
+        defending_color = "black" if attacking_color == "red" else "red"
+        
+        # 找出所有被威胁的对方棋子
+        threatened_pieces = []
+        for row in range(10):
+            for col in range(9):
+                piece = self.board.get_piece(row, col)
+                if piece and piece.color == defending_color and piece.is_revealed():
+                    # 排除将帅(将帅的威胁属于"将军",不属于"捉")
+                    from game.dark_chess_piece import PieceType
+                    if piece.piece_type != PieceType.GENERAL:
+                        if self.is_piece_under_threat((row, col), attacking_color):
+                            # 检查该棋子是否只能被动逃跑
+                            if not self.can_piece_escape((row, col), attacking_color):
+                                threatened_pieces.append((row, col))
+        
+        # 如果只有一个被追捉的棋子,返回它
+        # 如果有多个,返回第一个(简化处理)
+        if threatened_pieces:
+            return threatened_pieces[0]
+        
+        return None
+    
+    def check_perpetual_chase(self) -> bool:
+        """
+        检测长捉
+        
+        Returns:
+            True表示触发长捉判负，False表示未触发
+        """
+        # 当前是谁刚走完棋(可能是追捉方)
+        last_moved_color = "black" if self.game_state.current_turn == "red" else "red"
+        
+        # 查找是否有被追捉的棋子
+        chased_piece_pos = self.find_chased_piece(last_moved_color)
+        
+        if chased_piece_pos:
+            # 有被追捉的棋子,更新追捉状态
+            is_perpetual = self.game_state.update_chase_status(
+                True, last_moved_color, chased_piece_pos
+            )
+            
+            if is_perpetual:
+                # 触发长捉判负
+                self.notify_observers("game_over", {
+                    "winner": self.game_state.winner,
+                    "reason": f"长捉判负(连续追捉{self.game_state.consecutive_chases}次)"
+                })
+                return True
+        else:
+            # 没有追捉,重置计数
+            self.game_state.update_chase_status(False, None, None)
+        
+        return False
     
     def check_perpetual_check(self) -> bool:
         """

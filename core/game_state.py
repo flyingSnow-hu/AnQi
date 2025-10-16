@@ -23,6 +23,13 @@ class GameState:
         self.is_loss_by_perpetual_check = False  # 是否因长将判负
         self.perpetual_check_threshold = 6  # 长将判负阈值(连续6次)
         
+        # 长捉检测
+        self.consecutive_chases = 0  # 连续追捉次数
+        self.chasing_side = None     # 追捉方('red'或'black')
+        self.chased_piece_pos = None # 被追捉棋子的位置
+        self.is_loss_by_perpetual_chase = False  # 是否因长捉判负
+        self.perpetual_chase_threshold = 6  # 长捉判负阈值(连续6次)
+        
     def switch_turn(self):
         """切换回合"""
         self.current_turn = "black" if self.current_turn == "red" else "red"
@@ -132,3 +139,57 @@ class GameState:
             return -0.02   # 中等惩罚
         else:
             return -0.1    # 严重惩罚(接近长将判负)
+    
+    def update_chase_status(self, is_chasing, chasing_side, chased_piece_pos):
+        """
+        更新追捉状态
+        
+        Args:
+            is_chasing: 当前是否在追捉
+            chasing_side: 如果在追捉,是哪一方在追捉
+            chased_piece_pos: 被追捉棋子的位置
+        """
+        if is_chasing:
+            # 检查是否在追捉同一个棋子
+            if (self.chasing_side == chasing_side and 
+                self.chased_piece_pos == chased_piece_pos):
+                # 同一方追捉同一个棋子
+                self.consecutive_chases += 1
+            else:
+                # 新的追捉目标,重置计数
+                self.chasing_side = chasing_side
+                self.chased_piece_pos = chased_piece_pos
+                self.consecutive_chases = 1
+            
+            # 检查是否达到长捉阈值
+            if self.consecutive_chases >= self.perpetual_chase_threshold:
+                self.is_loss_by_perpetual_chase = True
+                self.game_over = True
+                # 长捉方判负,对方获胜
+                opponent = "black" if chasing_side == "red" else "red"
+                self.winner = "黑方" if opponent == "black" else "红方"
+                return True
+        else:
+            # 没有追捉,重置计数
+            self.consecutive_chases = 0
+            self.chasing_side = None
+            self.chased_piece_pos = None
+        
+        return False
+    
+    def get_perpetual_chase_penalty(self):
+        """
+        获取长捉惩罚
+        用于训练时惩罚长捉行为
+        
+        Returns:
+            惩罚值(负数),连续追捉次数越多惩罚越大
+        """
+        if self.consecutive_chases == 0:
+            return 0.0
+        elif self.consecutive_chases < 3:
+            return -0.003  # 轻微惩罚
+        elif self.consecutive_chases < 5:
+            return -0.015  # 中等惩罚
+        else:
+            return -0.08   # 严重惩罚(接近长捉判负)
