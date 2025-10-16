@@ -16,6 +16,7 @@ sys.path.insert(0, project_root)
 
 from game.game_engine import GameEngine
 from game.dark_chess_piece import PieceType
+from game.zobrist_hash import ZobristHash
 from players.human_player import HumanPlayer
 from rl_ai.neural_network import DarkChessNet, BoardEncoder
 from rl_ai.rl_trainer import RLTrainer
@@ -147,8 +148,21 @@ class ImprovedSelfPlayTrainer:
             # 切换回合
             engine.game_state.current_turn = "black" if current_color == "red" else "red"
             
-            # 计算即时奖励
+            # 计算新局面哈希并检查重复
+            current_hash = engine.zobrist.compute_hash(engine.board, engine.game_state.current_turn)
+            is_draw = engine.game_state.add_position_hash(current_hash)
+            
+            # 如果三次重复,标记为平局
+            if is_draw:
+                engine.game_state.game_over = True
+                engine.game_state.winner = None
+            
+            # 计算即时奖励(包含吃子奖励和重复惩罚)
             step_reward = self.calculate_step_reward(move_info, current_color)
+            
+            # 添加重复局面惩罚
+            repetition_penalty = engine.game_state.get_repetition_penalty()
+            step_reward += repetition_penalty
             
             # 累积奖励
             if current_color == "red":
@@ -171,9 +185,16 @@ class ImprovedSelfPlayTrainer:
         
         # 确定胜负
         if engine.game_state.game_over:
-            winner = "red" if engine.game_state.winner == "红方" else "black"
+            if engine.game_state.is_draw_by_repetition:
+                winner = None  # 三次重复平局
+            elif engine.game_state.winner == "红方":
+                winner = "red"
+            elif engine.game_state.winner == "黑方":
+                winner = "black"
+            else:
+                winner = None  # 其他平局情况
         else:
-            winner = None  # 平局
+            winner = None  # 超过最大步数,平局
         
         # 填充价值（结合最终胜负和即时奖励）
         for data in game_data:

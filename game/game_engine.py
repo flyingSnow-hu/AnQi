@@ -2,6 +2,7 @@ from typing import Optional, Tuple
 from core.interfaces import Observable
 from core.game_state import GameState
 from game.dark_chess_board import DarkChessBoard
+from game.zobrist_hash import ZobristHash
 
 class GameEngine(Observable):
     """游戏引擎 - 分离逻辑与视图"""
@@ -11,6 +12,13 @@ class GameEngine(Observable):
         self.black_player = black_player
         self.game_state = GameState()
         self.observers = []
+        
+        # Zobrist哈希用于重复局面检测
+        self.zobrist = ZobristHash()
+        
+        # 记录初始局面哈希
+        initial_hash = self.zobrist.compute_hash(self.board, self.game_state.current_turn)
+        self.game_state.add_position_hash(initial_hash)
         
         # 设置玩家颜色
         self.red_player.color = "red"
@@ -74,13 +82,27 @@ class GameEngine(Observable):
         # 检查游戏状态
         self._update_game_status()
         
+        # 计算移动后的局面哈希并检查重复
         if not self.game_state.game_over:
+            # 先切换回合,再计算哈希(因为哈希包含行棋方信息)
             self.game_state.switch_turn()
-            self.notify_observers("turn_changed", {
-                "current_player": self.current_player.name,
-                "color": self.game_state.current_turn
-            })
             
+            # 计算新局面哈希
+            current_hash = self.zobrist.compute_hash(self.board, self.game_state.current_turn)
+            is_draw = self.game_state.add_position_hash(current_hash)
+            
+            if is_draw:
+                # 三次重复判和
+                self.notify_observers("game_over", {
+                    "winner": None,
+                    "reason": "三次重复局面判和"
+                })
+            else:
+                self.notify_observers("turn_changed", {
+                    "current_player": self.current_player.name,
+                    "color": self.game_state.current_turn
+                })
+        
         return True
         
     def _is_valid_move(self, from_pos: Tuple[int, int], to_pos: Tuple[int, int]) -> bool:
