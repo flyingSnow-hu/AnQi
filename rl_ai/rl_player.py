@@ -17,18 +17,41 @@ from .neural_network import DarkChessNet, BoardEncoder
 class RLPlayer(AIPlayer):
     """基于神经网络的强化学习AI"""
     
-    def __init__(self, color: str, model_path=None, temperature=0.1):
+    def __init__(self, color: str, model_path=None, temperature=0.1, num_channels=128, num_res_blocks=10):
         """
         初始化RL玩家
         color: AI颜色 ("red" or "black")
         model_path: 模型文件路径，如果为None则使用随机初始化的模型
         temperature: 温度参数，控制探索程度（0=贪心，1=完全随机）
+        num_channels: 神经网络通道数（如果从模型加载会自动检测）
+        num_res_blocks: 残差块数量（如果从模型加载会自动检测）
         """
         super().__init__(color)
         self.name = f"RL AI ({color})"
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = DarkChessNet(num_channels=128, num_res_blocks=10)
+        
+        # 如果提供了模型路径，尝试自动检测模型参数
+        if model_path and os.path.exists(model_path):
+            try:
+                checkpoint = torch.load(model_path, map_location=self.device)
+                # 从检查点中提取通道数
+                if 'conv_input.weight' in checkpoint['model_state_dict']:
+                    detected_channels = checkpoint['model_state_dict']['conv_input.weight'].shape[0]
+                    num_channels = detected_channels
+                    print(f"检测到模型通道数: {num_channels}")
+                
+                # 从检查点中提取残差块数（通过计算res_blocks的数量）
+                res_block_keys = [k for k in checkpoint['model_state_dict'].keys() if k.startswith('res_blocks.')]
+                if res_block_keys:
+                    max_block_idx = max([int(k.split('.')[1]) for k in res_block_keys])
+                    detected_blocks = max_block_idx + 1
+                    num_res_blocks = detected_blocks
+                    print(f"检测到残差块数: {num_res_blocks}")
+            except Exception as e:
+                print(f"自动检测模型参数失败，使用默认值: {e}")
+        
+        self.model = DarkChessNet(num_channels=num_channels, num_res_blocks=num_res_blocks)
         self.model.to(self.device)
         
         # 加载模型
@@ -37,7 +60,7 @@ class RLPlayer(AIPlayer):
             self.model.load_state_dict(checkpoint['model_state_dict'])
             print(f"RL AI ({color}) 已加载模型: {model_path}")
         else:
-            print(f"RL AI ({color}) 使用随机初始化模型")
+            print(f"RL AI ({color}) 使用随机初始化模型 (channels={num_channels}, res_blocks={num_res_blocks})")
         
         self.model.eval()
         self.temperature = temperature

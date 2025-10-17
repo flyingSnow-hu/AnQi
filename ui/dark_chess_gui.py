@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 from typing import Optional, Tuple
 from game.game_engine import GameEngine
 from players.human_player import HumanPlayer
@@ -18,6 +18,7 @@ class DarkChessGUI:
         # AI相关
         self.ai_thinking = False
         self.game_mode = None  # 游戏模式
+        self.rl_model_path = "models_v3/model_final.pth"  # 默认RL模型路径
         
         # 界面参数
         self.cell_size = 60
@@ -68,6 +69,22 @@ class DarkChessGUI:
         # RL AI对战
         tk.Label(self.menu_frame, text="强化学习AI", 
                 font=("SimHei", 14), bg='lightgray', fg='purple').pack(pady=5)
+        
+        # 模型选择区域
+        model_frame = tk.Frame(self.menu_frame, bg='lightgray')
+        model_frame.pack(pady=5)
+        
+        tk.Label(model_frame, text="当前模型:", font=("SimHei", 10), 
+                bg='lightgray').pack(side=tk.LEFT, padx=5)
+        
+        self.model_path_label = tk.Label(model_frame, text=self.rl_model_path, 
+                                         font=("SimHei", 9), bg='lightgray', 
+                                         fg='blue', width=30, anchor='w')
+        self.model_path_label.pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(model_frame, text="选择模型", font=("SimHei", 9),
+                 bg='#673AB7', fg='white',
+                 command=self.select_model_file).pack(side=tk.LEFT, padx=5)
         
         tk.Button(self.menu_frame, text="人类 vs RL AI (红方人类)", 
                  font=("SimHei", 12), width=25, height=1,
@@ -124,6 +141,24 @@ AI类型：
         
         self.game_frame = tk.Frame(self.root)
         
+    def select_model_file(self):
+        """选择RL模型文件"""
+        file_path = filedialog.askopenfilename(
+            title="选择RL模型文件",
+            initialdir="models_v3",
+            filetypes=[("PyTorch模型", "*.pth"), ("所有文件", "*.*")]
+        )
+        if file_path:
+            self.rl_model_path = file_path
+            # 更新显示，只显示文件名或相对路径
+            import os
+            if len(file_path) > 35:
+                display_path = "..." + file_path[-32:]
+            else:
+                display_path = file_path
+            self.model_path_label.config(text=display_path)
+            messagebox.showinfo("成功", f"已选择模型:\n{file_path}")
+    
     def start_game(self, mode):
         """开始游戏"""
         self.game_mode = mode
@@ -176,9 +211,9 @@ AI类型：
             # 红方人类，黑方RL AI
             from rl_ai.rl_player import RLPlayer
             import os
-            model_path = "models_v3/model_final.pth"
+            model_path = self.rl_model_path
             if not os.path.exists(model_path):
-                messagebox.showwarning("警告", "未找到训练好的模型！将使用随机初始化模型")
+                messagebox.showwarning("警告", f"未找到模型文件: {model_path}\n将使用随机初始化模型")
                 model_path = None
             ai = RLPlayer("black", model_path=model_path, temperature=0.0)
             self.game_engine.set_ai_player("black", ai)
@@ -186,9 +221,9 @@ AI类型：
             # 黑方人类，红方RL AI
             from rl_ai.rl_player import RLPlayer
             import os
-            model_path = "models_v3/model_final.pth"
+            model_path = self.rl_model_path
             if not os.path.exists(model_path):
-                messagebox.showwarning("警告", "未找到训练好的模型！将使用随机初始化模型")
+                messagebox.showwarning("警告", f"未找到模型文件: {model_path}\n将使用随机初始化模型")
                 model_path = None
             ai = RLPlayer("red", model_path=model_path, temperature=0.0)
             self.game_engine.set_ai_player("red", ai)
@@ -197,9 +232,9 @@ AI类型：
             from ai.mcts_ai import MCTSAI
             from rl_ai.rl_player import RLPlayer
             import os
-            model_path = "models_v3/model_final.pth"
+            model_path = self.rl_model_path
             if not os.path.exists(model_path):
-                messagebox.showwarning("警告", "未找到训练好的模型！将使用随机初始化模型")
+                messagebox.showwarning("警告", f"未找到模型文件: {model_path}\n将使用随机初始化模型")
                 model_path = None
             self.game_engine.set_ai_player("red", MCTSAI("red", simulations=2000))
             self.game_engine.set_ai_player("black", RLPlayer("black", model_path=model_path, temperature=0.0))
