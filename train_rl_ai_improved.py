@@ -67,8 +67,12 @@ class ImprovedSelfPlayTrainer:
     def _can_be_attacked(self, board, position, attacker_color):
         """检查指定位置是否会被攻击者颜色的棋子攻击"""
         for piece, piece_pos in board.get_all_pieces(attacker_color):
-            if board.can_move(piece_pos, position):
-                return True
+            # 检查这个棋子是否能攻击到目标位置
+            try:
+                if board.is_valid_move(piece_pos, position, attacker_color):
+                    return True
+            except:
+                pass
         return False
         
     def calculate_step_reward(self, move_info, current_color):
