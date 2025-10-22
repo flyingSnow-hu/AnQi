@@ -365,8 +365,10 @@ def main():
             print(f"  总局数: {stats['total_games']}")
             print(f"  缓冲区大小: {stats['buffer_size']}")
     
-    # 保存最终模型
-    final_model_path = os.path.join(args.save_dir, 'model_final.pth')
+    # 保存最终模型（添加时间戳）
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    final_model_path = os.path.join(args.save_dir, f'model_final_{timestamp}.pth')
     trainer.save_checkpoint(final_model_path)
     
     print("\n" + "="*60)
@@ -377,3 +379,14 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+    # 保存最终模型（添加时间戳）
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    final_model_path = os.path.join(args.save_dir, f'model_final_{timestamp}.pth')
+    trainer.save_checkpoint(final_model_path)
+    
+    print("\n" + "="*60)
+    print("训练完成！")
+    print(f"最终模型已保存到: {final_model_path}")
+    print("="*60)
