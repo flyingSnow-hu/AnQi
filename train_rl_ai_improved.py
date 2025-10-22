@@ -44,6 +44,30 @@ class ImprovedSelfPlayTrainer:
         self.encoder = BoardEncoder()
         self.temperature = 1.0
         self.reward_scale = reward_scale  # 即时奖励缩放因子
+    
+    def _is_in_check(self, board, player_color):
+        """检查玩家是否被将"""
+        # 找到该颜色的将/帅
+        general = None
+        for piece in board.pieces.values():
+            if piece and piece.color == player_color and piece.piece_type == PieceType.GENERAL:
+                general = piece
+                break
+        
+        if not general:
+            return False
+        
+        # 检查对手是否能攻击到将
+        opponent_color = "black" if player_color == "red" else "red"
+        return self._can_be_attacked(board, general.position, opponent_color)
+    
+    def _can_be_attacked(self, board, position, attacker_color):
+        """检查指定位置是否会被攻击者颜色的棋子攻击"""
+        for piece in board.pieces.values():
+            if piece and piece.color == attacker_color:
+                if board.can_move(piece.position, position):
+                    return True
+        return False
         
     def calculate_step_reward(self, move_info, current_color):
         """
@@ -53,7 +77,7 @@ class ImprovedSelfPlayTrainer:
         """
         reward = 0.0
         
-        # 吃子奖励
+        # 1. 吃子奖励（核心奖励）
         if move_info.get('captured'):
             captured_type_str = move_info['captured']
             captured_color = move_info['captured_color']
@@ -65,10 +89,26 @@ class ImprovedSelfPlayTrainer:
                 
                 # 如果吃掉对方的棋子，给予正奖励
                 if captured_color != current_color:
-                    reward += piece_value * self.reward_scale
+                    reward += piece_value * self.reward_scale * 1.5  # 吃子奖励加强
                     
             except (ValueError, KeyError):
                 pass
+        
+        # 2. 翻子奖励（暴露对方未翻的棋子）
+        if move_info.get('revealed_piece'):
+            reward += 5 * self.reward_scale  # 翻子获得信息奖励
+        
+        # 3. 解将奖励（最重要的防守奖励）
+        if move_info.get('resolves_check'):
+            reward += 100 * self.reward_scale  # 解除将军给予大奖励
+        
+        # 4. 防守奖励（移动到安全位置）
+        if move_info.get('is_safe_move'):
+            reward += 10 * self.reward_scale
+        
+        # 5. 惩罚 - 走入被将的位置
+        if move_info.get('moves_into_check'):
+            reward -= 50 * self.reward_scale  # 走入将军位置要大幅扣分
         
         return reward
     
@@ -126,6 +166,9 @@ class ImprovedSelfPlayTrainer:
             # 记录移动前的状态（用于计算奖励）
             old_captured_count = len(engine.game_state.captured_pieces.get(current_color, []))
             
+            # 【新增】记录移动前是否被将
+            is_in_check_before = self._is_in_check(engine.board, current_color)
+            
             # 执行移动
             captured_piece = engine.board.move_piece(from_pos, to_pos)
             
@@ -136,6 +179,24 @@ class ImprovedSelfPlayTrainer:
                 engine.game_state.captured_pieces[captured_piece.color].append(captured_piece)
             
             engine.game_state.move_count += 1
+            
+            # 【新增】检查移动后是否解除了将军
+            is_in_check_after = self._is_in_check(engine.board, current_color)
+            move_info['resolves_check'] = is_in_check_before and not is_in_check_after
+            
+            # 【新增】检查移动后是否走入将军
+            move_info['moves_into_check'] = not is_in_check_before and is_in_check_after
+            
+            # 【新增】检查是否翻子（移动到对方未翻过的位置）
+            target_piece = engine.board.get_piece(to_pos)
+            if target_piece and not target_piece.revealed:
+                move_info['revealed_piece'] = True
+                target_piece.revealed = True
+            
+            # 【新增】检查是否是安全的防守移动
+            opponent_color = "black" if current_color == "red" else "red"
+            can_be_attacked = self._can_be_attacked(engine.board, to_pos, opponent_color)
+            move_info['is_safe_move'] = not can_be_attacked
             
             # 检查游戏是否结束
             if engine.board.is_general_captured("red"):
@@ -379,14 +440,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
-    # 保存最终模型（添加时间戳）
-    from datetime import datetime
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    final_model_path = os.path.join(args.save_dir, f'model_final_{timestamp}.pth')
-    trainer.save_checkpoint(final_model_path)
-    
-    print("\n" + "="*60)
-    print("训练完成！")
-    print(f"最终模型已保存到: {final_model_path}")
-    print("="*60)
