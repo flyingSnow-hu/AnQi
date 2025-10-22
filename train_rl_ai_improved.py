@@ -49,24 +49,26 @@ class ImprovedSelfPlayTrainer:
         """检查玩家是否被将"""
         # 找到该颜色的将/帅
         general = None
-        for piece in board.pieces.values():
-            if piece and piece.color == player_color and piece.piece_type == PieceType.GENERAL:
+        general_pos = None
+        
+        for piece, pos in board.get_all_pieces(player_color):
+            if piece.piece_type == PieceType.GENERAL:
                 general = piece
+                general_pos = pos
                 break
         
-        if not general:
+        if not general or general_pos is None:
             return False
         
         # 检查对手是否能攻击到将
         opponent_color = "black" if player_color == "red" else "red"
-        return self._can_be_attacked(board, general.position, opponent_color)
+        return self._can_be_attacked(board, general_pos, opponent_color)
     
     def _can_be_attacked(self, board, position, attacker_color):
         """检查指定位置是否会被攻击者颜色的棋子攻击"""
-        for piece in board.pieces.values():
-            if piece and piece.color == attacker_color:
-                if board.can_move(piece.position, position):
-                    return True
+        for piece, piece_pos in board.get_all_pieces(attacker_color):
+            if board.can_move(piece_pos, position):
+                return True
         return False
         
     def calculate_step_reward(self, move_info, current_color):
@@ -188,10 +190,10 @@ class ImprovedSelfPlayTrainer:
             move_info['moves_into_check'] = not is_in_check_before and is_in_check_after
             
             # 【新增】检查是否翻子（移动到对方未翻过的位置）
-            target_piece = engine.board.get_piece(to_pos)
-            if target_piece and not target_piece.revealed:
+            target_piece = engine.board.get_piece(to_pos[0], to_pos[1])
+            if target_piece and not target_piece.is_revealed():
                 move_info['revealed_piece'] = True
-                target_piece.revealed = True
+                target_piece.reveal()
             
             # 【新增】检查是否是安全的防守移动
             opponent_color = "black" if current_color == "red" else "red"
