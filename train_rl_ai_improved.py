@@ -297,9 +297,11 @@ class ImprovedSelfPlayTrainer:
             else:
                 final_value = -1.0  # 负
             
-            # 结合即时奖励
-            # 即时奖励的影响会随着时间衰减（越接近游戏结束，最终胜负的影响越大）
-            data['value'] = final_value + data['step_reward']
+            # 结合即时奖励（加权平均，避免即时奖励过大导致价值爆炸）
+            # 权重分配: 70% 最终胜负, 30% 即时奖励
+            # 这样可以防止单步奖励太大导致价值损失异常高
+            normalized_step_reward = data['step_reward'] * 0.1  # 即时奖励缩放
+            data['value'] = final_value * 0.7 + normalized_step_reward * 0.3
         
         return game_data, winner, red_cumulative_reward, black_cumulative_reward
     
