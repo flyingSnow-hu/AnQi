@@ -80,10 +80,12 @@ class ImprovedSelfPlayTrainer:
         计算每一步的即时奖励
         move_info: 移动信息字典（包含captured等）
         current_color: 当前玩家颜色
+        
+        重点: 即时奖励仅用于帮助学习，不应该淹没最终胜负信号
         """
         reward = 0.0
         
-        # 1. 吃子奖励（核心奖励）
+        # 1. 吃子奖励（核心奖励，大幅削弱）
         if move_info.get('captured'):
             captured_type_str = move_info['captured']
             captured_color = move_info['captured_color']
@@ -93,28 +95,28 @@ class ImprovedSelfPlayTrainer:
                 piece_type = PieceType(captured_type_str)
                 piece_value = PIECE_VALUES.get(piece_type, 10)
                 
-                # 如果吃掉对方的棋子，给予正奖励
+                # 如果吃掉对方的棋子，给予正奖励（削弱10倍）
                 if captured_color != current_color:
-                    reward += piece_value * self.reward_scale * 1.5  # 吃子奖励加强
+                    reward += piece_value * self.reward_scale * 0.15  # 从1.5削弱到0.15
                     
             except (ValueError, KeyError):
                 pass
         
-        # 2. 翻子奖励（暴露对方未翻的棋子）
+        # 2. 翻子奖励（削弱）
         if move_info.get('revealed_piece'):
-            reward += 5 * self.reward_scale  # 翻子获得信息奖励
+            reward += 0.5 * self.reward_scale  # 从5削弱到0.5
         
-        # 3. 解将奖励（最重要的防守奖励）
+        # 3. 解将奖励（强化防守，但不会太大）
         if move_info.get('resolves_check'):
-            reward += 100 * self.reward_scale  # 解除将军给予大奖励
+            reward += 10 * self.reward_scale  # 从100削弱到10
         
-        # 4. 防守奖励（移动到安全位置）
+        # 4. 防守奖励（削弱）
         if move_info.get('is_safe_move'):
-            reward += 10 * self.reward_scale
+            reward += 1 * self.reward_scale  # 从10削弱到1
         
         # 5. 惩罚 - 走入被将的位置
         if move_info.get('moves_into_check'):
-            reward -= 50 * self.reward_scale  # 走入将军位置要大幅扣分
+            reward -= 5 * self.reward_scale  # 从50削弱到5
         
         return reward
     
